@@ -1,0 +1,928 @@
+<W_Reps_Mod.at
+
+set get_all_non_empty_blocks (RealForm G)=[Block]:
+let rv=[Block]:[]
+then Gm=real_forms(G)
+then Gd=dual_real_forms(G)
+then M=block_sizes(G)
+then (r,t)=(#M,#M[0])
+in for i:#Gm do if G=Gm[i] 
+					then for j:#Gd do if M[j][i]!=0 then rv#:=block(G, Gd[j]) fi od
+			 fi
+			 od;rv
+
+			 
+
+
+set even_orbits(RealForm G)=[[int]]:
+let P= nilpotent_orbit_partitions(G)
+then rv=[vec]:[]
+in for p in P do 
+				if sum(p%2)=#p or sum(p%2)=0 then rv#:=p fi 
+				od;rv
+
+set dual_even_orbits(RealForm G)=[[int]]:
+even_orbits(dual_quasisplit_form(G))
+				
+				
+set find([(KGBElt, KGBElt)] K, (KGBElt, KGBElt) k)=int:
+let rv=-1
+then (x,y)=k
+in for i:#K do let (r,s)=K[i] in if x=r and y=s then rv:=i fi
+			od; rv
+			
+set find_reps_in_cells ([[int]] W_Cells, Param t, RealForm Gd)=int:
+let G=real_form(t)
+{then Gd=dual_quasisplit_form(G)}
+then B=block(G,Gd)
+then b=for i:#B do element(B,i)od
+then w=(x(t), dual_KGB(t,Gd)) {WE ARE USING THE DUAL KGB COMMAND HERE ... BE CAREFUL ABOUT INTEGRAL INFINITESIMAL CHARACTER}
+then rv=-1
+in for  i:#W_Cells do 
+					for v in W_Cells[i] do 
+						if v=find(b, w)
+							then rv:=i
+						fi
+						od
+						od; rv
+
+
+{given Partition multiplicities, construct the partition}
+set partition_from_multiplicity ([int] p) = [int]:
+let rv=[int]:[]
+in for i:#p do 
+					while p[i]>0 do rv#:=i; p[i]:=p[i]-1 od
+				od; rv
+				
+				
+{Takes input as a dual-block and an cell number of the block on the group side, and computes the cell number corresponding to the
+dual-block: that is the dual-cell number}
+set dual_cell(Block B, int Cell)= int:
+let Bd=dual(B)
+then G=real_form(B)
+then Gd=real_form(Bd)
+then W_Cells_Gd = for (v,) in W_cells(Bd) do  v od {vecs_as_int(W_cells(Bd))}
+then W_Cells_G = for (v,) in W_cells(B) do v od {vecs_as_int(W_cells(B))}
+then b=for i:#B do element(B,i)od
+then (x,y)=element(Bd, W_Cells_Gd[Cell][#W_Cells_Gd[Cell] -1])
+then w=(y,x)
+then k=find(b, w)
+then rv=-1
+in for i:#W_Cells_G do if find(W_Cells_G[i], k)!=-1 then rv:=i fi od; rv
+
+
+set dual_cell(Block B, [[int]] Cells)= [[int]]:
+let rv=[[int]]:[]
+then rv1=[int]:[]
+in for i:#Cells do if #Cells[i]!=0 then 
+					for j:#Cells[i] do rv1#:= dual_cell(B, Cells[i][j])od; 
+					rv#:=rv1
+					fi; rv1:=[] 
+					 od; rv
+
+
+set cells_with_given_AV ([int] O, [[int]] AV_Cells)=(int, [int]):
+let rv=0
+then rv1=[int]:[]
+in for i:#AV_Cells do if AV_Cells[i]=O then rv:=rv+1; rv1#:=i fi od; (rv, rv1)
+				
+set subset([int] V, [int] W)=bool:
+let V=sort(V)
+then W=sort(W)
+then rv=[int]:[]
+in for v in V do if find(W,v)!=-1 then rv#:=v fi od; rv=V
+
+set delete_sub_vector( [int] Q, [int] W)=[int]:
+let Q=sort(Q)
+then W=sort(W)
+then rv=[int]:[]
+in for w in W do if find (Q,w)=-1 then rv#:=w fi od; rv
+
+set subset_cor_to_binary([[Param]] W, [int] v) = [Param]:   
+let rv=[Param]:[]
+{#### Add assert to check #v=#W}
+in for i:#v do if v[i]!=0 then rv##:=W[i] fi od; rv
+
+{$$$$$$$$$$$$$$$$$$$$ COMPUTE RHOS FOR GIVEN GROUPS, WILL BE USED LATER TO FIND H $$$$$$$$$$$$$}				
+set H_GL( int n) = [int]:
+let v=2*rho(GL(n,R)) in (ratvec_as_vec(v))
+
+
+set H_Sp(int n) = [int]:
+assert(is_even(n), "Need an even input");
+let v=2*rho(Sp(n,R)) in (ratvec_as_vec(v))
+
+set H_SO( int n) = [int]:
+let rv=[int]:[]
+in	if n!=1
+	then 
+	rv:=ratvec_as_vec(2*rho(SO(n,0))) 
+	fi; rv
+
+{given a pair of odd integers p,q, compute the H(p,q) of type SO(p+q+1)}
+set H_SO_pair( int n, int m) = [int]:
+let v=2*rho(Sp(n-1,R))
+then w=2*rho(Sp(m-1,R))
+then rv=ratvec_as_vec(v##w##[0])
+in (reverse_sort(rv))
+	
+
+
+{$$$$$$$$$$$$$$$ given a group G of Type A, B or C, identify it upto isogenies $$$$$$$$$$$$}
+
+set is_default_G(RealForm G)=bool:
+if get_type(G) = 0 and semisimple_rank(G)<rank(G) then true
+elif get_type(G)=1 and is_adjoint(G) then true
+elif get_type(G)=2 and is_simply_connected(G) then true
+else false
+fi
+
+set check_group (RealForm G)=(int, int):
+if is_default_G(G) then (get_type(G),0) 
+else (get_type(G), 1) 
+fi		
+
+
+{Compute minimal elements of parabolics having equivalent KGB elements in the distinguished fiber}
+set x_min_parabolic_in_dis_fiber_Step1 (RealForm G,[int] H)=([KGBElt]):
+let n=#distinguished_fiber(G)
+then rv=[KGBElt]:[]
+then B=KGB(G)
+in for i:n do 
+			rv#:=x_min(parabolic(H/1,B[i]))
+			od; sort(rv)
+
+
+{Step 2 of above}
+set x_min_parabolic_in_dis_fiber (RealForm G,[int] H)=([KGBElt]):
+let V=x_min_parabolic_in_dis_fiber_Step1(G,H)
+then rv=[KGBElt]:[V[0]]
+then i=1
+in while i<#V do
+				if V[i]=V[i-1]
+					then i:=i+1
+				else
+					rv#:=V[i]; i:=i+1
+				fi
+				od; rv
+				
+set closed_real_parabolics_associated_to_a_lambda( RealForm G, [int] H)=[Parabolic]:
+let V=x_min_parabolic_in_dis_fiber(G, H)
+then rv=[Parabolic]:[]
+in for x in V do rv#:=parabolic(H/1, x) od; rv
+
+{Compute the one dimensionals on a given Levi}
+set one_dimensionals( RealForm G)=([Param]):
+let B=block_of(trivial(G))
+then rv=[Param]:[]
+in for t in B do 
+				if is_finite_dimensional(t) and dimension(t)=1
+					then rv#:=t
+				fi
+			od;rv
+
+set ind_one_dim_from_parabolic (Parabolic Q) = ([Param]):
+let L=Levi(Q)
+then B=one_dimensionals(L)
+then rv=[Param]:[]
+in for t in B do rv#:=last_param(theta_induce_irreducible(t,real_form(Q))) od; rv
+
+
+
+
+{%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Complex Associated Varieties for various Real groups %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%}
+
+
+set AV_for_given_block_SL (Block B)=[[int]]: 
+let W_Cells = for (v,) in W_cells(B) do  v od 
+in for i:#W_Cells do wrep_SL(B, W_Cells[i])od
+
+set AV_for_given_block_A (Block B)=[[int]]: 
+let W_Cells = for (v,) in W_cells(B) do  v od {vecs_as_int(W_cells(B))}
+in for i:#W_Cells do wrep_A(B, W_Cells[i])od
+
+
+set if_same_len_B([int] R, [int] S)=([int], [int]):
+let R=sort(R)
+then S=sort(S)
+in if #R<=#S then R:=null(#S-#R+1)##R fi; (sort(R),sort(S)) 
+
+
+set orbit_from_W_rep_B (Wrep W)=[int]:
+let (R,S)=W
+then (R,S)=if_same_len_B(R,S)
+then R1=for i:#R do 2*(R[i]+i)+1 od 
+then S1=for i:#S do 2*(S[i]+i) od
+then rv=sort(R1##S1)
+in for i:#rv do rv[i]:=rv[i]-i od; reverse(rv)
+
+
+set AV_for_given_block_B (Block B)=[[int]]: 
+let W_Cells = for (v,) in W_cells(B) do  v od {vecs_as_int(W_cells(B))}
+in for i:#W_Cells do orbit_from_W_rep_B (wrep(B, W_Cells[i]))od
+
+
+
+
+set if_same_len_C([int] R, [int] S)=([int], [int]):
+let R=sort(R)
+then S=sort(S)
+in if #R<#S then R:=null(#S-#R)##R  elif #R>#S then S:=null(#R-#S)##S fi; (sort(R),sort(S)) 
+
+
+set orbit_from_W_rep_C (Wrep W)=[int]:
+let (R,S)=W
+then (R,S)=if_same_len_C(R,S)
+then R1=for i:#R do 2*(R[i]+i)+1 od 
+then S1=for i:#S do 2*(S[i]+i) od
+then rv1=sort(R1##S1)
+then rv=[int]:[]
+in for i:#rv1 do if rv1[i]-i!=0 then rv#:=rv1[i]-i fi od; reverse(rv)
+
+
+set AV_for_given_block_C (Block B)=[[int]]: 
+let W_Cells = for (v,) in W_cells(B) do  v od {vecs_as_int(W_cells(B))}
+in for i:#W_Cells do orbit_from_W_rep_C(wrep(B, W_Cells[i]))od
+
+
+set AV_for_given_block(Block B)=[[int]]:
+let G=real_form(B)
+then rv=[[int]]:[]
+then (p,q)=check_group(G)
+in if p=0 and q=0 then rv:=AV_for_given_block_A(B)
+elif p=0 and q=1 then rv:=AV_for_given_block_SL(B)
+elif p=1 then rv:=AV_for_given_block_B(B)
+elif p=2 then rv:=AV_for_given_block_C(B)
+fi;rv
+
+
+{Computes AV of a given parameter, if p is not the block(G, Gd) returns [-1]}
+set AV_param(Param p, RealForm Gd)=[int]:
+let G=real_form(p)
+then B=block(G, Gd)
+then AV= AV_for_given_block(B)
+then W_Cells = for (v,) in W_cells(B) do  v od {vecs_as_int(W_cells(B))}
+in if find_reps_in_cells(W_Cells, p, Gd)!= -1 then AV[find_reps_in_cells(W_Cells, p, Gd)]
+									else [-1] fi
+
+set AV_param(Param p)=(int,[int]):
+let G=real_form(p)
+then Gd=dual_real_forms(G)
+then rv=(-1,[-1])
+in for i:#Gd do if AV_param(p, Gd[i])[0]!=-1 then rv:=(i,AV_param(p, Gd[i])) fi od; rv
+
+
+
+
+{%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Complex Associated Varieties for various Complex groups %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%}
+
+set AV_for_given_block_complex_B (Block B)=[[int]]: 
+let W_Cells = for (v,) in W_cells(B) do  v od {vecs_as_int(W_cells(B))}
+in for i:#W_Cells do orbit_from_W_rep_B(wrep_complex_group (B, W_Cells[i]))od
+
+
+set AV_for_given_block_complex_C (Block B)=[[int]]: 
+let W_Cells = for (v,) in W_cells(B) do  v od {vecs_as_int(W_cells(B))}
+in for i:#W_Cells do orbit_from_W_rep_C(wrep_complex_group (B, W_Cells[i]))od
+
+
+{%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% H for various groups %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%}
+
+
+
+{Compute the H in the Sl2 triple associated to the orbit P %%%%%%%%%% SL %%%%%%%%%%%% }		
+set orbit_H_SL( RealForm S, [int] P)=[int]:
+let rv=[int]:[]
+then G=GL(rank(S)+1, R)
+then M=inverse_change_basis(S, simple_roots (G))
+in for i in P do  
+		   rv##:=H_GL(i)
+			od; let (rv,)=make_dominant(S,ratvec_as_vec(M*rv)) in rv
+			
+{Compute the H in the Sl2 triple associated to the orbit P}		
+set orbit_H_An( RealForm G, [int] P)=[int]:
+let rv=[int]:[]
+in for i in P do  
+		   rv##:=H_GL(i)
+			od;let (rv,)=make_dominant(G,rv) in rv
+
+
+
+set orbit_H_Bn_Step1(RealForm G, [int] p)=([int], [int]):
+let A=partition_multiplicities(p)
+then p=rank(G)
+then rv=[int]:[]
+in for i:#A do 
+		if is_even(i) and i!=0
+			then 
+				while A[i]>0  
+				do rv##:=H_GL(i); 
+				A[i]:=A[i]-2 od
+		elif is_odd(i) and i!=1
+		    then
+		    	if A[i]>1
+		    		then
+		    		while A[i]>1
+		    		do rv##:=H_GL(i); 
+					A[i]:=A[i]-2 od
+				fi
+		fi
+		od;(rv,partition_from_multiplicity(A))
+		 
+
+set orbit_H_Bn (RealForm G, [int] r) = [int]:
+let (rv,)=orbit_H_Bn_Step1(G, r)
+{then ()=prints("Orbit_H_Bn")}
+then (,P)=orbit_H_Bn_Step1(G, r)
+then A=partition_multiplicities(P)%2 {get rid of all the 1's in the partition}
+then P=sort(partition_from_multiplicity(A)) {now partition has parts with multiplicity 1}
+then p=rank(G)
+then i=1
+then rv=rv##H_Sp(P[0]-1)
+in
+while i<#P
+	do 
+	rv##:=H_SO_pair(P[i], P[i+1]);
+	 i:=i+2
+	od; let (rv,)=make_dominant(G, rv##null(p-#rv)) in rv
+		
+		
+set orbit_H_Cn( RealForm G, [int] P)=[int]:
+let A=partition_multiplicities(P)
+then p=rank(G)
+then rv=[int]:[]
+then k=0
+then s=0
+in for i:#A do 
+		if is_even(i) and i!=0
+			then 
+				while A[i]>0  
+				do rv##:=H_SO(i+1); 
+				A[i]:=A[i]-1 od
+		elif is_odd(i) and i!=1
+		    then
+		    	while A[i]> 0 
+		    	do rv##:=H_GL(i); A[i]:=A[i]-2 od
+		fi
+		od; let (rv,)=make_dominant(G,rv##null(p-#rv)) in rv
+		
+set orbit_H_PSp (RealForm S, [int] P)=[int]:
+let G=Sp(2*rank(S),R)
+then rv=[int]:[]
+then H=orbit_H_Cn(G,P)
+then M=inverse_change_basis(S, simple_roots (G))
+in ratvec_as_vec(2*(M*H)) {then (rv,)=make_dominant(S,ratvec_as_vec(M*rv)) in rv}
+
+set orbit_H_Spin (RealForm S, [int] P)=[int]:
+let G=SO(rank(S)+1,rank(S))
+then rv=[int]:[]
+then H=orbit_H_Bn(G,P)
+then M=inverse_change_basis(S, simple_roots (G))
+in ratvec_as_vec((M*H))
+{then (rv,)=make_dominant(dual_quasisplit_form(S),ratvec_as_vec(M*rv)) in rv}
+		
+		
+set H_SL2(RealForm G, [int] P)=[int]:
+let rv=[int]:[]
+then (p,q)=check_group(G)
+in if p=0 and q=0 then rv:=orbit_H_An(G,P)
+elif p=0 and q=1 then rv:=orbit_H_SL(G,P)
+elif p=1 and q=0 then rv:=orbit_H_Bn(G,P)
+elif p=1 and q=1 then rv:=orbit_H_Spin(G,P)
+elif p=2 and q=0 then rv:=orbit_H_Cn(G,P) 
+elif p=2 and q=1 then rv:=orbit_H_PSp(G,P)
+fi; rv
+
+
+
+{%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% COMPUTES UNIPOTENT PACKETS FOR GROUPS OF TYPE A, B AND C %%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%}
+
+
+
+{Takes input as a realform G and a partition P for the group and outputs all representations induced 
+from closed parabolics of type S=singular_simple_indices(lambda)}
+set induced_from_closed_parabolics (RealForm G, [int] P)=[(Param,KGBElt)]:
+let H=H_SL2(G,P)
+then V=closed_real_parabolics_associated_to_a_lambda(G, H)
+then rv=[(Param,KGBElt)]:[]
+in for v in V do let (w,x)=v in  rv#:=(last_param(theta_induce_irreducible(trivial(Levi(v)), G)), x) od; rv
+
+
+{Takes input as a block B and a partition P corresponding to a nilpotent orbit of real_form(B), and, 
+computes real orbits of the partition P}
+set real_forms_of_complex_orbit_as_reps(Block B, [int] P)=[Param]:
+let G=real_form(B)
+then Gd=real_form(dual(B))
+then T=induced_from_closed_parabolics (G,P)
+then W_Cells= for (v,) in W_cells(B) do  v od
+then AV_Cells=AV_for_given_block(B)
+ then rv=[Param]:[]
+in for t in T do let (w,x)=t in
+				if find_reps_in_cells(W_Cells, w, Gd)!= -1 and AV_Cells[find_reps_in_cells(W_Cells, w, Gd)]=P
+				then if find(rv,w)= -1 then rv#:=w fi fi
+				od; rv	
+
+
+
+{This command computes the real_orbits of O in terms of parabolic subgroups.}
+set real_forms_of_complex_orbit_as_parabolics (Block B, [int] P)=[Parabolic]:
+let Gd=real_form(dual(B))
+then G=real_form(B)
+then H=H_SL2(G,P)
+then S=singular_simple_indices(G {Is this Gd?}, H) {lambda is an elmenent of H \in G, therefore pairs with simple roots of G --- }
+then rv=[Parabolic]:[]
+then W_Cells= for (v,) in W_cells(B) do  v od
+then AV_Cells=AV_for_given_block(B)
+then Q=theta_stable_parabolics_type (G, S)
+then T=for t in Q do last_param(theta_induce_irreducible(trivial(Levi(t)), real_form(t))) od
+then W_Cells = for (v,) in W_cells(B) do  v od
+in for i:#T do
+				if find_reps_in_cells(W_Cells, T[i], Gd)!= -1 and AV_Cells[find_reps_in_cells(W_Cells, T[i], Gd)]=P 
+				then rv#:=Q[i]
+				 fi
+				od; rv	
+
+
+
+
+set all_cells_with_Aq_lambda (Block B, [int] P)=[int]:
+let Gd = real_form(dual(B))
+then W_Cells= for (v,) in W_cells(B) do  v od
+then AV_Cells=AV_for_given_block(B)
+then R = real_forms_of_complex_orbit_as_parabolics(B,P)
+then S = for r in R do ind_one_dim_from_parabolic(r) od
+then rv=[int]:[]
+in for s in S do for i:# s do if find(rv, find_reps_in_cells(W_Cells, s[i], Gd)) = -1 then if find_reps_in_cells(W_Cells, s[i],Gd) !=-1 then rv#:=find_reps_in_cells(W_Cells, s[i],Gd) fi fi od od; rv
+				
+				
+set all_cells_with_Aq_lambda_as_real_forms (Block B, [int] P)=[[int]]:
+let Gd=real_form(dual(B))
+then G=real_form(B)
+then R = real_forms_of_complex_orbit_as_parabolics(B,P)
+then S = for r in R do ind_one_dim_from_parabolic(r) od
+then rv = [int]:[]
+then rv1 = [[int]]:[]
+then W_Cells= for (v,) in W_cells(B) do  v od
+then AV_Cells=AV_for_given_block(B)
+in for s in S do  
+				for i:# s do 
+				if find(rv, find_reps_in_cells(W_Cells, s[i],Gd)) = -1 then if find_reps_in_cells(W_Cells, s[i],Gd) !=-1 then rv#:=find_reps_in_cells(W_Cells, s[i],Gd) fi fi
+						od; rv1#:=rv; rv:=[]
+				od; rv1
+
+set real_form_information (RealForm G)=
+let B=get_all_non_empty_blocks(G)
+then P=even_orbits(G)
+in for i:#B do prints("*************************************************"); 
+				prints("************** Information in ", B[i], "************************");
+				prints("even orbit", "    ","# of forms", "    ", "cell #", "    ", "dual cell #");
+				for j:#P do 
+				let  A = all_cells_with_Aq_lambda_as_real_forms(B[i],P[j]) then k=#A in 
+				prints(P[j], "    ", k , "     ", A, "		", dual_cell(dual(B[i]), A)) 
+				od; 
+			prints("");
+			prints("")
+			od
+
+set unipotent_algo_test (Block B, [int] P)=bool:
+let AV_Cells=AV_for_given_block(B)
+then k=#all_cells_with_Aq_lambda(B,P)
+then (n,)=cells_with_given_AV (P, AV_Cells)
+in n=k
+
+
+set arthur_packet_weak (Block B, [int] Pd)=[Param]:
+let rv=[Param]:[]
+then Bd=dual(B)
+then AV_Cells=AV_for_given_block(Bd)
+then G=real_form(B)
+then Gd=real_form(Bd)
+then Hd=H_SL2(Gd,Pd)
+then W_Cells_G = for (v,) in W_cells(B) do  v od
+then b=for i:#B do element(B,i) od
+then S=singular_simple_indices(Gd, Hd) {Not clear if this should be Gd or G}  
+then (,V)=cells_with_given_AV (Pd, AV_Cells)
+in  for i:#V do 
+				for t in W_Cells_G[dual_cell (B, V[i])] do
+						 let p=parameter(b[t]) then gamma=infinitesimal_character(p) in
+							if tau_complement(p) = S {subset(S, tau_complement(p)) and #S=#tau_complement(p) and is_valid_root_walls(G, S, gamma)} 
+							 	then rv#:=Psi(p, S)
+							fi
+							
+							od
+				od; rv
+
+set arthur_packet_weak_indices (Block B, [int] Pd)=[int]:
+let rv=[int]:[]
+then Bd=dual(B)
+then AV_Cells=AV_for_given_block(Bd)
+then G=real_form(B)
+then Gd=real_form(Bd)
+then Hd=H_SL2(Gd,Pd)
+then W_Cells_G = for (v,) in W_cells(B) do  v od
+then b=for i:#B do element(B,i) od
+then S=singular_simple_indices(Gd, Hd) {Not clear if this should be Gd or G}  
+then (,V)=cells_with_given_AV (Pd, AV_Cells)
+in  for i:#V do 
+				for t in W_Cells_G[dual_cell (B, V[i])] do
+						 let p=parameter(b[t]) then gamma=infinitesimal_character(p) in
+							if tau_complement(p) = S {subset(S, tau_complement(p)) and #S=#tau_complement(p) and is_valid_root_walls(G, S, gamma)} 
+							 	then rv#:=t
+							fi
+							
+							od
+				od; rv
+{Starts with a block on the group side, and, a partition on the dual side. Computes unipotent
+representations on the group side}
+set arthur_packet_honest (Block B, [int] Pd)=[[Param]]:
+let rv=[Param]:[]
+then rv1=[[Param]]:[]
+then Bd=dual(B)
+then G=real_form(B)
+then Gd=real_form(Bd)
+then Hd=H_SL2(Gd,Pd)
+then W_Cells_G = for (v,) in W_cells(B) do  v od
+then b=for i:#B do element(B,i) od
+then S=singular_simple_indices(Gd, Hd) {Not clear if this should be Gd or G}  
+then V=all_cells_with_Aq_lambda_as_real_forms (Bd,Pd)
+in for v in V do 
+				for i:#v do 
+						for t in W_Cells_G[dual_cell (B, v[i])] do
+						 let p=parameter(b[t]) then gamma=infinitesimal_character(p) in
+							if tau_complement(p) = S {subset(S, tau_complement(p)) and #S=#tau_complement(p) and is_valid_root_walls(G, S, gamma)} 
+							 	then rv#:=Psi(p, S)
+							fi
+							
+							{
+							if	is_valid_translate(p,lambda/2) and is_valid_root_walls(G, S, gamma) and subset(S, tau_complement(p)) 
+								then rv#:=T(p,(1/2)*lambda)
+							
+							fi
+							}
+							{rv#:=p }od
+						od; rv1#:=rv; rv:=[]
+				od; rv1
+
+set arthur_packet_honest_indices (Block B, [int] Pd)=[[int]]:
+let rv=[int]:[]
+then rv1=[[int]]:[]
+then Bd=dual(B)
+then G=real_form(B)
+then Gd=real_form(Bd)
+then Hd=H_SL2(Gd,Pd)
+then W_Cells_G = for (v,) in W_cells(B) do  v od
+then b=for i:#B do element(B,i) od
+then S=singular_simple_indices(Gd, Hd) {Not clear if this should be Gd or G}  
+then V=all_cells_with_Aq_lambda_as_real_forms (Bd,Pd)
+in for v in V do 
+				for i:#v do 
+						for t in W_Cells_G[dual_cell (B, v[i])] do
+						 let p=parameter(b[t]) then gamma=infinitesimal_character(p) in
+							if tau_complement(p) = S {subset(S, tau_complement(p)) and #S=#tau_complement(p) and is_valid_root_walls(G, S, gamma)} 
+							 	then rv#:=t
+							fi
+							
+							{
+							if	is_valid_translate(p,lambda/2) and is_valid_root_walls(G, S, gamma) and subset(S, tau_complement(p)) 
+								then rv#:=T(p,(1/2)*lambda)
+							
+							fi
+							}
+							{rv#:=p }od
+						od; rv1#:=rv; rv:=[]
+				od; rv1
+
+set arthur_packet_missing (Block B, [int] Pd)=[[Param]]:
+let rv=[Param]:[]
+then rv1=[[Param]]:[]
+then Bd=dual(B)
+then Gd=real_form(Bd)
+then G=real_form(B)
+then W_Cells_G = for (v,) in W_cells(B) do  v od
+then b=for i:#B do element(B,i) od
+then AV_Cells_Gd = AV_for_given_block(Bd)
+then Hd=H_SL2(Gd, Pd)
+then S=singular_simple_indices(Gd, Hd) {Not clear if this should be Gd or G}  
+then (,Wd)=cells_with_given_AV (Pd, AV_Cells_Gd)
+then Qd=sort(all_cells_with_Aq_lambda (Bd, Pd))
+then Wd=delete_sub_vector(Qd,Wd)
+in for w in Wd do  
+				for t in W_Cells_G[dual_cell (B, w)]
+						do if subset(S,tau_complement(parameter(b[t]))) then rv#:=Psi(parameter(b[t]), S) fi 
+						od; rv1#:=rv; rv:=[]
+				od; rv1
+
+
+set arthur_packet_missing_indices (Block B, [int] Pd)=[[int]]:
+let rv=[int]:[]
+then rv1=[[int]]:[]
+then Bd=dual(B)
+then Gd=real_form(Bd)
+then G=real_form(B)
+then W_Cells_G = for (v,) in W_cells(B) do  v od
+then b=for i:#B do element(B,i) od
+then AV_Cells_Gd = AV_for_given_block(Bd)
+then Hd=H_SL2(Gd, Pd)
+then S=singular_simple_indices(Gd, Hd){Not clear if this should be Gd or G}  
+then (,Wd)=cells_with_given_AV (Pd, AV_Cells_Gd)
+then Qd=sort(all_cells_with_Aq_lambda (Bd, Pd))
+then Wd=delete_sub_vector(Qd,Wd)
+in for w in Wd do  
+				for t in W_Cells_G[dual_cell (B, w)]
+						do if subset(S,tau_complement(parameter(b[t]))) then rv#:=t fi 
+						od; rv1#:=rv; rv:=[]
+				od; rv1
+
+
+set unipotent_information (Block B, [int] Pd)=
+let U=arthur_packet_honest(B,Pd)
+then Bd=dual(B)
+then missing=arthur_packet_missing(B,Pd)
+then all_missing=[Param]:[] 
+then ()=for params in missing do all_missing##:=params od 
+then G=real_form(B)
+then ()=prints("*************************************************"); prints("Dual Even orbit:",Pd); prints("Block:", B); prints("Number of real forms:", " ", #U); prints("")
+in if #U>0 or #missing>0
+then prints("The packets are"); for i:#U do prints("Packet" ," ", i);
+					for v in U[i] do prints(v, ", ", "Is Unitary:", " ", is_unitary(v), " , ", "Infinitesimal Character:", " ", infinitesimal_character(v) )
+					od; 
+prints("")od; 
+
+if unipotent_algo_test(Bd,Pd) then prints("This is the complete set of Unipotent representations in this block.");{prints("");} prints("*************************************************")
+								else prints("These packets are not complete, and, the missing representations are"); 
+								for t in missing do prints(t) od; prints("*********************************************") 
+								fi
+								fi
+			
+set unipotent_information (RealForm G)=
+let B=get_all_non_empty_blocks(G)
+then Pd=dual_even_orbits(G)
+in for i:#Pd do prints("*************************************************"); prints("************** Unipotent packets corresponding to the orbit:", Pd[i], "************************");
+				for j:#B do  
+				unipotent_information(B[j],Pd[i])
+				od; 
+			prints("");
+			prints("")
+			od
+
+
+set unipotent_information_short (RealForm G)=
+let B=get_all_non_empty_blocks(G)
+then Pd=dual_even_orbits(G)
+in for i:#B do prints("*************************************************"); 
+				prints("************** Information in ", B[i], "************************");
+				prints("even orbit", "    ","# of forms", "    ", "uni rep #'s", "		", "inf char");
+				for j:#Pd do 
+				let  A = arthur_packet_honest_indices(B[i],Pd[j]) then k=#A in 
+				prints(Pd[j], "    ", k , "     ", A, "		", (1/2)*H_SL2(real_form(dual(B[i])), Pd[j])) 
+				od; 
+			prints("");
+			prints("")
+			od
+
+
+
+set unipotent_information_weak_short (RealForm G)=
+let B=get_all_non_empty_blocks(G)
+then Pd=dual_even_orbits(G)
+in for i:#B do prints("*************************************************"); 
+				prints("************** Information in ", B[i], "************************");
+				prints("even orbit", "    ", "uni rep #'s", "		", "inf char");
+				for j:#Pd do 
+				let  A = arthur_packet_weak_indices(B[i],Pd[j]) then k=#A in 
+				prints(Pd[j], "     ", A, "		", (1/2)*H_SL2(real_form(dual(B[i])), Pd[j])) 
+				od; 
+			prints("");
+			prints("")
+			od
+{Creating a NewType for real orbits of a complex nilpotent orbit: (#block, Complex_orbit, #real_form)}
+:real_orbit_block=([int], int)
+:real_orbit = (int, [int], int)
+
+
+
+{%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+
+				Unipotent Information with Stability
+				
+				  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%}								
+
+set indices_with_one([int] v)=[int]:
+let rv=[int]:[]
+in for i:#v do if find(v, 1)!=-1 then rv#:=find(v, 1); v[find(v,1)]:=0 fi od;rv
+
+set print_stability_unipotent( [[Param]] U, [[Param]] missing)=
+let all_missing=[Param]:[]
+then weak_packet=[Param]:[]
+then ()=for params in U do weak_packet##:=params od 
+then ()=for params in missing do all_missing##:=params od 
+then ()=prints("all_missing=",all_missing)
+then W_bin=generate_all_binary(#missing)
+then U_bin=generate_all_binary(#U) in
+prints("Computing Stability for Unipotent Packets");
+for i:#U_bin do let U_temp=subset_cor_to_binary(U, U_bin[i]) in
+			if #U_temp>0 and sum(U_bin[i])=1 then
+				prints ("Computing stability for the following parameters"," ", U_temp, " ", "which are the union of Packets" ," ", indices_with_one(U_bin[i]) );
+				let (M,params)=stable(U_temp) in 
+					if n_rows(M)>0 then prints("dimension space of stable sums:", n_rows(M));
+					prints("The stable sums are:");
+					for i:n_rows(M) do prints(make_param_pol(row(M,i),params)) od
+					fi;
+			
+					if #all_missing > 0 then
+					 prints("The (weak) packet is incomplete and we need to compute stability with the missing representations");
+							for j:#W_bin do
+									let W_temp=subset_cor_to_binary(missing,W_bin[j]) in
+										if #W_temp>0 then
+											let (M_temp,params_temp)=stable(U_temp##W_temp) in 
+											if n_rows(M_temp)>0 then prints("dimension space of stable sums:", n_rows(M_temp));
+											prints("Here are the stable sums when we add the parameters:", " ", W_temp, " ", "from the missing parts to the original Unipotent packet:", " ",  
+											 U_temp);
+											for i:n_rows(M_temp) do prints(make_param_pol(row(M_temp,i),params_temp)) od
+											fi
+											
+							 			fi
+									od
+					fi
+			elif #U_temp>0 and sum(U_bin[i])=#U_bin[i] then
+			prints ("Computing stability for the following parameters"," ", U_temp , " ", "which are the union of Packets" ," ", indices_with_one(U_bin[i]) );
+			let (M,params)=stable(U_temp) in 
+					if n_rows(M)>0 then prints("dimension space of stable sums:", n_rows(M));
+					prints("The stable sums are:");
+					for i:n_rows(M) do prints(make_param_pol(row(M,i),params)) od
+					fi;
+					
+					if #all_missing > 0 then
+				 prints("The (weak) packet is incomplete and we need to compute stability with the missing representations");
+						for j:#W_bin do
+									let W_temp=subset_cor_to_binary(missing,W_bin[j]) in
+										if #W_temp>0 then
+											let (M_temp,params_temp)=stable(U_temp##W_temp) in 
+											if n_rows(M_temp)>0 then prints("dimension space of stable sums:", n_rows(M_temp));
+											prints("Here are the stable sums when we add the parameters:", " ", W_temp, " ", "from the missing parts to the original Unipotent packet:", " ",  
+											 U_temp);
+											for i:n_rows(M_temp) do prints(make_param_pol(row(M_temp,i),params_temp)) od
+											fi
+											
+							 			fi
+									od
+						fi
+			fi		
+		
+		od 
+		
+
+	
+set unipotent_information_with_stability (Block B, [int] Pd)=
+let U=arthur_packet_honest(B, Pd)
+then missing=arthur_packet_missing(B,Pd)
+then G=real_form(B)
+then ()=prints("There are", " ", #U ," ", " real forms (and hence Unipotent packets) of", " ", Pd, " ","in this block.")
+in for i:#U do  
+prints("Packet" ," ", i); for v in U[i] do prints(v)od od ; 
+if unipotent_algo_test(B,Pd) then prints("This is the complete set of Unipotent representations in this block."); prints("")
+								else prints("These packets are not complete, and, the missing representations are"); 
+								for t in missing do prints(t) od; prints("") 
+								fi;
+{For Stability} print_stability_unipotent(U, missing)
+
+{%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+
+ 							Exceptional Groups
+  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%								
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%}								
+
+set induced_from_closed_parabolics_E (RealForm G, [int] lambda)=[(Param,KGBElt)]:
+let V=closed_real_parabolics_associated_to_a_lambda(G, lambda)
+then rv=[(Param,KGBElt)]:[]
+in for v in V do let (w,x)=v in  rv#:=(last_param(theta_induce_irreducible(trivial(Levi(v)), G)), x) od; rv
+
+
+set real_forms_of_complex_orbit_as_reps_E (Block B, [int] lambda, [[int]] AV_Cells )=[Param]:
+let G=real_form(B)
+then Gd=real_form(dual(B))
+then T=induced_from_closed_parabolics_E(G,lambda)
+then W_Cells= for (v,) in W_cells(B) do  v od {vecs_as_int(W_cells(Bd))}
+{then AV_Cells={[[2,2], [0,2], [0,2], [0,0]]}[[2,2,2,2],[2,2,0,2],[2,2,0,0], [2,2,0,2],[0,2,0,2],[0,2,0,2],[2,2,0,0],[2,2,0,0],[2,2,0,0], [0,2,0,0], [2,0,0,0],[0,2,0,2], [1,0,1,2],[0,2,0,0], [0,2,0,0], [2,0,0,0], [2,0,0,0],[0,1,0,0],[0,0,0,2],[0,1,0,0], [0,1,0,0], [2,0,0,0], [0,0,0,1],[0,0,0,1],[0,0,0,0]]}
+then rv=[Param]:[]
+in for t in T do let (w,x)=t in
+				if find_reps_in_cells(W_Cells, w, Gd)!= -1 and AV_Cells[find_reps_in_cells(W_Cells, w, Gd)]=lambda
+				then if find(rv,w)= -1 then rv#:=w fi fi
+				od; rv	
+
+
+{This command computes the real_orbits of O in terms of parabolic subgroups. Since our applications
+use computations in the dual group, the computations is happening in a dual block for a dual orbit
+note that in this case, we are treating H as an element of the X_*(H^\vee), so that it pairs with
+roots of Gd}
+
+set real_forms_of_complex_orbit_as_parabolics (Block B, [int] lambda, [[int]] AV_Cells)=[Parabolic]:
+let Bd=dual(B)
+then Gd=real_form(Bd)
+then G=real_form(B)
+then S=singular_simple_indices(Gd, lambda) {lambda is an elmenent of H \in G}
+then rv=[Parabolic]:[]
+then Q=theta_stable_parabolics_type (G, S)
+then T=for t in Q do last_param(theta_induce_irreducible(trivial(Levi(t)), real_form(t))) od
+then W_Cells = for (v,) in W_cells(B) do  v od
+in for i:#T do
+				if find_reps_in_cells(W_Cells, T[i], Gd)!= -1 and AV_Cells[find_reps_in_cells(W_Cells, T[i], Gd)]=lambda 
+				then rv#:=Q[i] 
+				 fi
+				od; rv	
+
+
+
+
+set all_cells_with_Aq_lambda_E(Block B, [int] lambda, [[int]] AV_Cells)=[int]:
+let Bd = dual(B)
+then Gd = real_form(Bd)
+then W_Cells = for (v,) in W_cells(B) do  v od {vecs_as_int(W_cells(Bd))}
+then R = real_forms_of_complex_orbit_as_parabolics(B, lambda, AV_Cells)
+then S = for r in R do ind_one_dim_from_parabolic(r) od
+then rv=[int]:[]
+in for s in S do for i:# s do let n=find_reps_in_cells(W_Cells, s[i], Gd) in 
+							 if find(rv, n) = -1 then if n!=-1 then rv#:=n fi fi od od; rv
+				
+				
+
+set all_cells_with_Aq_lambda_as_real_forms_E(Block B, [int] lambda, [[int]] AV_Cells)=[[int]]:
+let Bd=dual(B) 
+then Gd=real_form(Bd)
+then G=real_form(B)
+then R = real_forms_of_complex_orbit_as_parabolics(B, lambda, AV_Cells)
+then S = for r in R do ind_one_dim_from_parabolic(r) od
+then rv = [int]:[]
+then rv1 = [[int]]:[]
+then W_Cells = for (v,) in W_cells(B) do  v od 
+in for s in S do  
+				for i:#s do let n=find_reps_in_cells(W_Cells, s[i], Gd) in  
+				if find(rv,n) = -1 then if n!=-1 then rv#:=n fi fi
+						od; rv1#:=rv; rv:=[]
+				od; rv1
+
+
+
+set unipotent_algo_test_E (Block B, [int] lambda, [[int]] AV_Cells)=bool:
+let k=#all_cells_with_Aq_lambda_E (B, lambda, AV_Cells)
+then (n,)=cells_with_given_AV (lambda, AV_Cells)
+in n=k
+
+
+
+{In this case Block on Group side, lambda and AV_Cells on Dual side}
+set weak_unipotent_packet_E(Block B, [int] lambda,[[int]] AV_Cells )=[[Param]]:
+let rv=[Param]:[]
+then rv1=[[Param]]:[]
+then Bd=dual(B)
+then Gd=real_form(Bd)
+then G=real_form(B)
+then W_Cells_G = for (v,) in W_cells(B) do  v od 
+then b=for i:#B do element(B,i) od
+then S=singular_simple_indices(G, lambda)  
+then V=all_cells_with_Aq_lambda_as_real_forms_E(Bd, lambda, AV_Cells)
+in for v in V do 
+				for i:#v do 
+						for t in W_Cells_G[dual_cell (B, v[i])] do
+						 let p=parameter(b[t]) then gamma=infinitesimal_character(p) in
+							if tau_complement(p) = S {subset(S, tau_complement(p)) and #S=#tau_complement(p) and is_valid_root_walls(G, S, gamma)} 
+							 	then rv#:=Psi(p, S)
+							fi
+							
+							{
+							if	is_valid_translate(p,lambda/2) and is_valid_root_walls(G, S, gamma) and subset(S, tau_complement(p)) 
+								then rv#:=T(p,(1/2)*lambda)
+							
+							fi
+							}
+							{rv#:=p }od
+						od; rv1#:=rv; rv:=[]
+				od; rv1
+
+{AV(block(F4_s, dual)) =[[2,2,2,2],[2,0,2,2],[2,0,2,2],[2,0,2,0],[2,0,2,0],[2,0,2,0],[0,0,2,2],[2,1,0,1],[0,0,2,2],[0,0,2,0],[0,0,2,0],[0,0,2,2],[0,0,2,2],[0,0,2,0],[0,0,0,2],[0,0,0,2],[0,0,0,2],[0,0,1,0],[2,0,0,0],[0,0,1,0],[0,0,1,0],[1,0,0,0],[0,0,0,2],[1,0,0,0],[0,0,0,0]]}
+{AV(block(E6_s, dual)) = [[2,2,2,2,2,2],[2,2,0,2,0,2], [2,2,2,0,2,2],[2,2,0,2,0,2],[2,0,0,2,0,2],
+[1,2,1,0,1,1],[1,2,1,0,1,1],[2,2,0,0,0,2],[0,2,0,2,0,0],[0,2,0,2,0,0],[0,0,0,2,0,0],[2,0,0,2,0,2],[1,1,1,0,1,1],
+[1,1,1,0,1,1],[2,2,0,0,0,2],[0,0,0,2,0,0],[0,0,0,2,0,0],[0,0,1,0,1,0],[0,0,1,0,1,0],[1,2,0,0,0,1],
+[0,2,0,0,0,0],[1,2,0,0,0,1],[0,0,1,0,1,0],[2,0,0,0,0,2],[1,1,0,0,0,1],[1,1,0,0,0,1],
+[0,2,0,0,0,0],[0,2,0,0,0,0],[1,0,0,0,0,1],[1,0,0,0,0,1],[0,1,0,0,0,0],[0,0,0,0,0,0]]}
